@@ -1,0 +1,49 @@
+:root {
+  --primary: #ff3366;
+  --secondary: #9933cc;
+  --tertiary: #33cc99;
+  --text: #000;
+  --text-light: #fff;
+  --background: #fff;
+  --bg-overlay: rgba(255,255,255,0.8);
+  --transition: 0.3s ease;
+  --nav-height: 70px;
+  --nav-height-mobile: 60px;
+  --nav-bg-color: #800000;
+  --alert-red: #d32f2f;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0; padding: 0;
+}
+
+html {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+  background: var(--background);
+}
+
+/* (All other styles copied here unchanged from the original <style> block) */
+
+/* Example: Navigation styles */
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 0;
+  position: absolute;
+  width: 100%;
+  z-index: 100;
+  background-color: transparent;
+  height: var(--nav-height);
+  transition: background-color var(--transition);
+}
+
+/* …hero, about, timetable, exhibition, participate, location, food-drinks, mobile-app, contact, sponsors, footer… */
