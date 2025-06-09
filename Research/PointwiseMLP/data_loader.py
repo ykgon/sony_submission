@@ -1,51 +1,57 @@
 import pandas as pd
 import torch
-from torch.utils.data import TensorDataset, DataLoader, random_split
+from torch.utils.data import TensorDataset, Subset, DataLoader
 from config import Config
 
-
-def load_csv(path: str, column_names: list) -> pd.DataFrame:
-    """Load a CSV file with given column names."""
-    return pd.read_csv(path, names=column_names, encoding="UTF8")
-
-
-def prepare_tensor_dataset(df1: pd.DataFrame, df2: pd.DataFrame) -> TensorDataset:
+def load_filtered_df(csv_t0_path: str, csv_t1_path: str) -> pd.DataFrame:
     """
-    Given two DataFrames (features and targets), return a TensorDataset.
-    df1 must contain all Config.COLUMN_NAMES; df2 must contain 'u'.
+    pointdata_t0.csv と pointdata_t1.csv を読み込み、
+    列名 ['t0','t1'] で結合する。
     """
-    # features: all 10 columns
-    teach = df1[Config.COLUMN_NAMES].astype(float).values
-    # target: only 'u' from the second file
-    answer = df2['u'].astype(float).values
+    df_t0 = pd.read_csv(csv_t0_path, names=['t0'], encoding="UTF8")
+    df_t1 = pd.read_csv(csv_t1_path, names=['t1'], encoding="UTF8")
+    df = pd.concat([df_t0, df_t1], axis=1)
+    return df
 
-    teach_tensor = torch.tensor(teach, dtype=torch.float32)
-    answer_tensor = torch.tensor(answer, dtype=torch.float32).view(-1, 1)
+def prepare_dataset(df: pd.DataFrame) -> TensorDataset:
+    """
+    DataFrame から (teach, answer) の TensorDataset を生成。
+    teach: [n,1]、answer: [n,1]
+    """
+    teach = df['t0'].astype(float).values
+    answer = df['t1'].astype(float).values
+    teach_tensor = torch.tensor(teach, dtype=torch.float32).view(-1,1)
+    answer_tensor = torch.tensor(answer, dtype=torch.float32).view(-1,1)
     return TensorDataset(teach_tensor, answer_tensor)
 
+def get_train_val_test_loaders():
+    """
+    データを 80%:10%:10% で分割し、DataLoader を返す。
+    学習: shuffle=True, drop_last=True
+    検証/テスト: shuffle=False
+    """
+    df = load_filtered_df(Config.TRAIN_CSV_T0_PATH, Config.TRAIN_CSV_T1_PATH)
+    dataset = prepare_dataset(df)
 
-def get_train_val_loaders():
-    """Return train and validation DataLoaders (80/20 split)."""
-    df1 = load_csv(Config.TRAIN_CSV1_PATH, Config.COLUMN_NAMES)
-    df2 = load_csv(Config.TRAIN_CSV2_PATH, Config.COLUMN_NAMES)
-    full_ds = prepare_tensor_dataset(df1, df2)
+    n = len(dataset)
+    n_train = int(n * 0.8)
+    n_val   = int(n * 0.1)
+    n_test  = n - n_train - n_val
+    idx = list(range(n))
 
-    train_size = int(len(full_ds) * 0.8)
-    val_size = len(full_ds) - train_size
-    train_ds, val_ds = random_split(full_ds, [train_size, val_size])
+    train_ds = Subset(dataset, idx[:n_train])
+    val_ds   = Subset(dataset, idx[n_train:n_train+n_val])
+    test_ds  = Subset(dataset, idx[n_train+n_val:])
 
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=Config.BATCH_SIZE,
-        shuffle=True,
-        num_workers=2,
-        pin_memory=True
-    )
-    val_loader = DataLoader(
-        val_ds,
-        batch_size=Config.BATCH_SIZE,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True
-    )
-    return train_loader, val_loader
+    train_loader = DataLoader(train_ds,
+                              batch_size=Config.BATCH_SIZE,
+                              shuffle=True,
+                              drop_last=True)
+    val_loader   = DataLoader(val_ds,
+                              batch_size=Config.BATCH_SIZE,
+                              shuffle=False)
+    test_loader  = DataLoader(test_ds,
+                              batch_size=Config.BATCH_SIZE,
+                              shuffle=False)
+
+    return train_loader, val_loader, test_loader

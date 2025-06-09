@@ -1,37 +1,31 @@
-import torch
-import numpy as np
 import csv
+import numpy as np
+import torch
 from config import Config
 
+def save_model(model: torch.nn.Module, path: str = Config.MODEL_SAVE_PATH):
+    """モデルの state_dict を保存"""
+    torch.save({'model_state_dict': model.state_dict()}, path)
 
-def save_best_model(model: torch.nn.Module,
-                    best_val_loss: float,
-                    current_val_loss: float,
-                    patience_counter: int):
-    """
-    Save model.state_dict() if improved.
-    Returns (new_best_val_loss, new_patience_counter).
-    """
-    if current_val_loss < best_val_loss:
-        torch.save(model.state_dict(), "best_model.pth")
-        return current_val_loss, 0
-    else:
-        return best_val_loss, patience_counter + 1
+def load_model(model: torch.nn.Module, path: str = Config.MODEL_SAVE_PATH):
+    """保存済みモデルを読み込む"""
+    checkpoint = torch.load(path, map_location=Config.DEVICE)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(Config.DEVICE)
+    model.eval()
+    return model
 
-
-def calculate_accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    """
-    Compute the L2‐type accuracy:
-      sqrt( sum((y_true - y_pred)^2) / sum(y_true^2) ).
-    """
-    diff_sq = np.abs(y_true - y_pred) ** 2
-    ans_sq = np.abs(y_true) ** 2
-    return np.sqrt(diff_sq.sum() / ans_sq.sum())
-
-
-def save_predictions(predictions: list, file_path: str):
-    """Write one prediction per row to CSV."""
-    with open(file_path, "w", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        for p in predictions:
+def save_predictions(preds: list, path: str = Config.PREDICTION_CSV):
+    """予測値リストを CSV に書き出し"""
+    with open(path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        for p in preds:
             writer.writerow([p])
+
+def relative_error(true: np.ndarray, pred: np.ndarray) -> float:
+    """
+    sqrt( sum(|t - p|) / sum(|t|) )
+    """
+    diff = np.abs(true - pred)
+    denom = np.abs(true)
+    return np.sqrt(diff.sum() / denom.sum())

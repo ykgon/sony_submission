@@ -1,96 +1,65 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from config import Config, fix_seed
-from data_loader import get_train_val_loaders
-from model import ImplicitGNN
-from utils import save_best_model
 
-DEVICE = Config.DEVICE
+from config import Config
+from data_loader import get_train_val_test_loaders
+from model import PointwiseMLP
+from utils import save_model
 
+def train():
+    torch.manual_seed(Config.SEED)
+    train_loader, val_loader, _ = get_train_val_test_loaders()
 
-def train_epoch(model, loader, criterion, optimizer):
-    model.train()
-    total_loss = 0.0
-    for x, y in loader:
-        x = x.to(DEVICE)
-        y = y.to(DEVICE)
-        out = model(x)
-        loss = criterion(out, y)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item() * x.size(0)
-    return total_loss / len(loader.dataset)
+    model = PointwiseMLP(Config.HIDDEN_DIM).to(Config.DEVICE)
+    optimizer = torch.optim.Adam(model.parameters())
+    criterion = torch.nn.HuberLoss()
 
+    history = []  # [(epoch, train_loss, val_loss), ...]
 
-def validate_epoch(model, loader, criterion):
-    model.eval()
-    total_loss = 0.0
-    with torch.no_grad():
-        for x, y in loader:
-            x = x.to(DEVICE)
-            y = y.to(DEVICE)
-            out = model(x)
-            loss = criterion(out, y)
-            total_loss += loss.item() * x.size(0)
-    return total_loss / len(loader.dataset)
+    for epoch in range(1, Config.MAX_EPOCH+1):
+        # --- training ---
+        model.train()
+        total_train = 0.0
+        for x, y in train_loader:
+            x, y = x.to(Config.DEVICE), y.to(Config.DEVICE)
+            pred = model(x)
+            loss = criterion(pred, y)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_train += loss.item() * x.size(0)
+        avg_train = total_train / len(train_loader.dataset)
 
+        # --- validation ---
+        model.eval()
+        total_val = 0.0
+        with torch.no_grad():
+            for x, y in val_loader:
+                x, y = x.to(Config.DEVICE), y.to(Config.DEVICE)
+                pred = model(x)
+                loss = criterion(pred, y)
+                total_val += loss.item() * x.size(0)
+        avg_val = total_val / len(val_loader.dataset)
 
-def main():
-    fix_seed(Config.SEED)
+        history.append((epoch, avg_train, avg_val))
+        if epoch % 50 == 0 or epoch == 1:
+            print(f"Epoch {epoch}/{Config.MAX_EPOCH} — "
+                  f"Train: {avg_train:.5f}, Val: {avg_val:.5f}")
 
-    train_loader, val_loader = get_train_val_loaders()
-    model = ImplicitGNN().to(DEVICE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=Config.LEARNING_RATE)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, factor=0.5, patience=10, threshold=1e-4
-    )
-    criterion = torch.nn.MSELoss()
+    # --- モデル保存 ---
+    save_model(model)
 
-    best_val = float("inf")
-    patience = 0
-    history = []
-
-    for epoch in range(Config.MAX_EPOCH):
-        train_loss = train_epoch(model, train_loader, criterion, optimizer)
-        val_loss = validate_epoch(model, val_loader, criterion)
-
-        # adjust lr
-        scheduler.step(val_loss)
-
-        # save best
-        best_val, patience = save_best_model(model, best_val, val_loss, patience)
-
-        history.append((epoch, train_loss, val_loss))
-
-        if epoch % 10 == 0:
-            print(f"Epoch {epoch+1}/{Config.MAX_EPOCH} — "
-                  f"Train: {train_loss:.5f}, Val: {val_loss:.5f}")
-
-        if patience >= Config.EARLY_STOPPING_PATIENCE:
-            print("Early stopping.")
-            break
-
-    # Plot losses over epochs
+    # --- 損失推移プロット ---
     hist = np.array(history)
-    plt.plot(hist[:, 0], hist[:, 1], label="Train")
-    plt.plot(hist[:, 0], hist[:, 2], label="Val")
+    plt.plot(hist[:,0], hist[:,1], label="Train")
+    plt.plot(hist[:,0], hist[:,2], label="Val")
     plt.xlabel("Epoch")
-    plt.ylabel("MSE Loss")
+    plt.ylabel("Huber Loss")
     plt.title("Training vs. Validation Loss")
     plt.legend()
     plt.grid(True)
     plt.show()
 
-    # Save final checkpoint
-    torch.save({
-        "epoch": epoch,
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "loss": val_loss
-    }, "Implicit_GNN_checkpoint.pth")
-
-
 if __name__ == "__main__":
-    main()
+    train()
